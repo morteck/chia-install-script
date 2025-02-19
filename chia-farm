@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# Variables
+CTID=100                   # Container ID (choose a unique ID for the LXC container)
+VMID=100                   # Unique VM ID for the LXC container
+LXC_NAME="chia_farm"        # Name of the container
+HOSTNAME="chia-farm"        # Hostname for the container
+NETWORK_BRIDGE="vmbr0"      # Bridge network (use vmbr0 by default)
+OS_TEMPLATE="ubuntu-20.04"   # Template for the container
+CT_ROOT_PASSWORD="root"     # Root password for the LXC
+LXC_MEMORY="4096"           # Memory for the LXC container (4GB)
+LXC_CPU="2"                 # Number of CPU cores
+
+# Create the LXC container
+echo "Creating LXC container..."
+pct create $CTID /var/lib/vz/template/cache/$OS_TEMPLATE.tar.gz \
+  -hostname $HOSTNAME \
+  -memory $LXC_MEMORY \
+  -cores $LXC_CPU \
+  -net0 name=eth0,bridge=$NETWORK_BRIDGE,ip=dhcp \
+  -rootfs local-lvm:8,backup=0 \
+  -password $CT_ROOT_PASSWORD
+
+# Start the container
+echo "Starting the container..."
+pct start $CTID
+
+# Install necessary packages and set up the Chia environment
+echo "Installing Chia dependencies and setting up GUI..."
+pct exec $CTID -- bash <<EOF
+# Update system
+apt update && apt upgrade -y
+
+# Install dependencies
+apt install -y build-essential python3-venv python3-dev libssl-dev libffi-dev \
+    liblzma-dev git
+
+# Install GUI dependencies (for VNC access)
+apt install -y xfce4 xfce4-goodies tightvncserver
+
+# Install Chia blockchain
+cd /opt
+git clone https://github.com/Chia-Network/chia-blockchain.git
+cd chia-blockchain
+git checkout latest
+
+# Install Chia software
+sh install.sh
+
+# Start Chia services
+. ./activate
+chia init
+
+# Set up VNC server
+tightvncserver :1
+echo "VNC setup completed. Access the GUI at port 5901."
+
+EOF
+
+# Provide user with container info
+echo "Chia farming container setup is complete."
+echo "You can access the GUI via VNC at <your_proxmox_ip>:5901"
+
